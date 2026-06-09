@@ -1,14 +1,127 @@
-# Purpose:
-# Build, test, and deploy a frontend application
-# to AWS S3, then invalidate CloudFront cache
-# so users receive the latest version immediately.
-#
-# Deployment Flow:
-# 1. Checkout source code
-# 2. Install dependencies
-# 3. Run tests
-# 4. Build frontend assets
-# 5. Authenticate with AWS
-# 6. Upload build files to S3
-# 7. Clear CloudFront cache
-# 8. Display deployment summary
+1. Frontend Deployment to AWS S3 + CloudFront
+Purpose
+
+This workflow:
+
+Builds the frontend application
+Uploads build artifacts to S3
+Invalidates CloudFront cache
+Sends deployment status notifications
+AWS Resources Required
+
+Create the following AWS resources:
+
+Amazon S3 Bucket
+
+Used to host frontend static files.
+
+Amazon CloudFront Distribution
+
+Used as a CDN to serve content globally.
+
+Architecture
+GitHub Actions
+        │
+        ▼
+    Amazon S3
+        │
+        ▼
+   CloudFront CDN
+        │
+        ▼
+       Users
+IAM User Requirements
+
+Create a dedicated IAM user for deployments.
+
+Generate:
+
+Access Key ID
+Secret Access Key
+Required IAM Permissions
+
+Example deployment policy:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateInvalidation",
+        "cloudfront:GetDistribution"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+
+For production environments, permissions should be restricted to specific resources.
+
+Frontend Project Requirements
+
+The project should contain:
+
+{
+  "scripts": {
+    "build": "...",
+    "test": "..."
+  }
+}
+
+Expected build output:
+
+dist/
+
+The deployment workflow uploads:
+
+aws s3 sync ./dist s3://bucket-name --delete
+Required GitHub Secrets
+Secret Name	Description
+AWS_ACCESS_KEY_ID	AWS IAM Access Key
+AWS_SECRET_ACCESS_KEY	AWS IAM Secret Key
+AWS_REGION	AWS Region
+S3_BUCKET	S3 Bucket Name
+CLOUDFRONT_ID	CloudFront Distribution ID
+SMTP_USERNAME	Email Sender Address
+SMTP_PASSWORD	SMTP Password / App Password
+EMAIL_TO	Recipient Email Address(es)
+Example
+AWS_REGION=ap-south-1
+S3_BUCKET=my-frontend-bucket
+CLOUDFRONT_ID=E123ABC456XYZ
+
+
+2. Email Notification Configuration
+Purpose
+
+Email notifications are sent when a deployment:
+
+Succeeds
+Fails
+Gets cancelled
+
+Notifications include:
+
+Repository information
+Branch information
+Deployment result
+Commit details
+Workflow execution link
+
+GitHub Secrets
+
+Store:
+
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=<generated-app-password>
+EMAIL_TO=team@company.com
+
+Note: Do not use your normal Gmail password.

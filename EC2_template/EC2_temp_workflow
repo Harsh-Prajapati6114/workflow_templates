@@ -1,13 +1,114 @@
-# Purpose:
-# Build, test, package, and deploy a Node.js backend
-# application to an EC2 instance using PM2.
-#
-# Deployment Flow:
-# 1. Checkout source code
-# 2. Install dependencies
-# 3. Run tests
-# 4. Build application
-# 5. Create deployment package
-# 6. Upload package to EC2
-# 7. Extract package and install production dependencies
-# 8. Restart application using PM2
+1. Backend Deployment to AWS EC2
+Purpose
+
+This workflow:
+
+Builds the Node.js backend application
+Creates a deployment package
+Uploads the package to an EC2 instance
+Deploys the application
+Restarts the application using PM2
+Sends deployment status notifications via email
+EC2 Server Requirements
+
+The target EC2 instance must have the following installed:
+
+Node.js
+node -v
+NPM
+npm -v
+PM2
+pm2 -v
+
+Install PM2 if not available:
+
+npm install -g pm2
+TAR Utility
+tar --version
+Application Directory
+
+Create the deployment directory:
+
+sudo mkdir -p /var/www/myapp
+sudo chown -R ubuntu:ubuntu /var/www/myapp
+
+Replace ubuntu with your EC2 username if different.
+
+SSH Access
+
+GitHub Actions connects to the EC2 server through SSH.
+
+Verify SSH access:
+
+ssh -i private-key.pem ubuntu@your-server-ip
+
+Connection should work successfully before using the workflow.
+
+Backend Project Requirements
+
+The project should contain:
+
+{
+  "scripts": {
+    "build": "...",
+    "test": "..."
+  }
+}
+
+Expected build output:
+
+dist/
+└── server.js
+
+PM2 starts the application using:
+
+pm2 start dist/server.js --name myapp
+Required GitHub Secrets
+
+Navigate to:
+
+Repository
+→ Settings
+→ Secrets and Variables
+→ Actions
+
+Create the following secrets:
+
+Secret Name	Description
+EC2_HOST	EC2 Public IP or DNS
+EC2_USER	SSH Username
+EC2_SSH_KEY	Private SSH Key
+SMTP_USERNAME	Email Sender Address
+SMTP_PASSWORD	SMTP Password / App Password
+EMAIL_TO	Recipient Email Address(es)
+Example
+EC2_HOST=54.xxx.xxx.xxx
+EC2_USER=ubuntu
+EMAIL_TO=devops@company.com
+
+2. Email Notification Configuration
+Purpose
+
+Email notifications are sent when a deployment:
+
+Succeeds
+Fails
+Gets cancelled
+
+Notifications include:
+
+Repository information
+Branch information
+Deployment result
+Commit details
+Workflow execution link
+
+GitHub Secrets
+
+Store:
+
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=<generated-app-password>
+EMAIL_TO=team@company.com
+
+Note: Do not use your normal Gmail password.
