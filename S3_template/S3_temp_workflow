@@ -1,0 +1,14 @@
+# Purpose:
+# Build, test, and deploy a frontend application
+# to AWS S3, then invalidate CloudFront cache
+# so users receive the latest version immediately.
+#
+# Deployment Flow:
+# 1. Checkout source code
+# 2. Install dependencies
+# 3. Run tests
+# 4. Build frontend assets
+# 5. Authenticate with AWS
+# 6. Upload build files to S3
+# 7. Clear CloudFront cache
+# 8. Display deployment summary

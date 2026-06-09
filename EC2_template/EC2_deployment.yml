@@ -1,0 +1,170 @@
+name: Deploy Backend to EC2 
+# trigger on push to development branch and manual dispatch
+on:
+  push:
+    branches:
+      - development
+  #allow manual trigger from GitHub UI
+  workflow_dispatch:
+
+permissions:
+  contents: read  #workflow needs repo read access to pull code
+
+env:
+  NODE_VERSION: "22"  # centralize node version so it can be easily updated in one place
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      # download code from repo to runner
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      #install required node version and npm dependencies caching to speed up future workflow runs
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      #install project dependencies using package-lock.json for reproducible builds
+      - name: Install Dependencies
+        run: npm ci
+
+      #run tests if they exist, but don't fail if there are no tests
+      - name: Run Tests
+        run: npm test --if-present
+
+      # build the application if a build script is defined in package.json, but don't fail if it doesn't exist
+      - name: Build Application
+        run: npm run build --if-present
+
+      # packages only the necessary files for server, reduces transfer time and avoids sending unnecessary files like .git or node_modules
+      - name: Create Deployment Package
+        run: |
+          tar -czf release.tar.gz \
+          package.json \
+          package-lock.json \
+          dist
+
+      # securely copies the deployment packages from the runner to the targeted EC2 instance
+      - name: Upload Artifact To EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "release.tar.gz"
+          target: "/tmp"
+
+      # connects to the EC2 instance via SSH and executes application deployment commands remotely 
+      - name: Deploy On EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # exit immediately if any command fails 
+            set -e  
+
+            # directory where the application will be deployed on the EC2 instance
+            APP_DIR=/var/www/myapp
+
+            # create the application directory if it doesn't exist 
+            mkdir -p $APP_DIR
+
+            # move into deployment directory
+            cd $APP_DIR
+
+            # extract the uploaded deployment package
+            tar -xzf /tmp/release.tar.gz
+
+            # install only production dependencies to reduce disk usage and attack surface
+            npm ci --omit=dev
+
+            # restart the application using PM2 process manager, if process  does not exist, start it
+            pm2 restart myapp || pm2 start dist/server.js --name myapp
+
+            # save the PM2 process list so it auto-starts on server reboot
+            pm2 save
+
+            #remove the deployment artifact to keep the server clean
+            rm -f /tmp/release.tar.gz
+
+  send-email-notification:
+    name: Notify Stakeholders via Email
+
+    runs-on: ubuntu-24.04
+
+    # Wait for deploy job to complete
+    needs: deploy
+
+    # Run even if deploy fails or gets cancelled
+    if: always()
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # fetch full git history for commit details
+
+      - name: Determine Deployment Status
+        run: |
+          if [ "${{ needs.deploy.result }}" = "success" ]; then
+            echo "STATUS=SUCCESS" >> $GITHUB_ENV
+            echo "ICON=✅" >> $GITHUB_ENV
+          elif [ "${{ needs.deploy.result }}" = "cancelled" ]; then
+            echo "STATUS=CANCELLED" >> $GITHUB_ENV
+            echo "ICON=🚫" >> $GITHUB_ENV
+          else
+            echo "STATUS=FAILED" >> $GITHUB_ENV
+            echo "ICON=❌" >> $GITHUB_ENV
+          fi
+      - name: Extract Commit Details
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "MERGE_DETAILS<<EOF" >> $GITHUB_ENV
+          echo "$COMMIT_MSG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+      - name: Send Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+
+          subject: "${{ env.ICON }} Deployment ${{ env.STATUS }} - ${{ github.repository }}"
+
+          to: ${{ secrets.EMAIL_TO }}
+
+          from: GitHub Actions CI/CD <${{ secrets.SMTP_USERNAME }}>
+
+          html_body: |
+            <h2>${{ env.ICON }} Deployment ${{ env.STATUS }}</h2>
+            <p>
+              The GitHub Actions workflow has completed.
+            </p>
+            <h3>📦 Deployment Details</h3>
+            <ul>
+              <li><strong>Deployment Type:</strong> Backend (EC2 + PM2)</li>
+              <li><strong>Repository:</strong> ${{ github.repository }}</li>
+              <li><strong>Branch:</strong> ${{ github.ref_name }}</li>
+              <li><strong>Environment:</strong> Development</li>
+              <li><strong>Triggered By:</strong> ${{ github.actor }}</li>
+              <li><strong>Commit Message:</strong> ${{ env.MERGE_DETAILS }}</li>
+              <li><strong>Workflow:</strong> ${{ github.workflow }}</li>
+              <li><strong>Deployment Result:</strong> ${{ needs.deploy.result }}</li>
+              <li><strong>Commit SHA:</strong> ${{ github.sha }}</li>
+            </ul>
+            <h3>🔀 Latest Commit Details</h3>
+            <pre>${{ env.MERGE_DETAILS }}</pre>
+            <h3>🔗 Workflow Logs</h3>
+            <p>
+              <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">
+                View GitHub Actions Run #${{ github.run_number }}
+              </a>
+            </p>

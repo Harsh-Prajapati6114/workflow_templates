@@ -1,0 +1,13 @@
+# Purpose:
+# Build, test, package, and deploy a Node.js backend
+# application to an EC2 instance using PM2.
+#
+# Deployment Flow:
+# 1. Checkout source code
+# 2. Install dependencies
+# 3. Run tests
+# 4. Build application
+# 5. Create deployment package
+# 6. Upload package to EC2
+# 7. Extract package and install production dependencies
+# 8. Restart application using PM2
